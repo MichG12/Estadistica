@@ -1,0 +1,188 @@
+---
+title: "Proyecto"
+author: "Priscilla Angulo Chaves"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(ggplot2)
+library(traineR)
+library(caret)
+library(lattice)
+library(readxl)
+library(readr)
+library(kknn)
+library(dplyr)
+library(tidyr)
+library(scatterplot3d)
+library(corrplot)
+library(ggcorrplot)
+library(pastecs)
+library(GGally)
+library(lattice)
+library(summarytools)
+library(car)
+library(nortest)
+```
+
+# Análisis descriptivo
+```{r}
+#Tabla de datos 
+datos.salarios.raw <- read.csv("DataScience_salaries_2024.csv",sep = ",",dec='.')
+
+#Datos que no se tomarán en cuenta
+datos.salarios <-datos.salarios.raw[ , !(names(datos.salarios.raw) %in% c("salary","salary_currency"))]
+str(datos.salarios)
+```
+
+```{r}
+#Convertir variables categoricas en numericas
+fac.experience <- factor(datos.salarios$experience_level); num.experience<- as.numeric(fac.experience)
+fac.type <- factor(datos.salarios$employment_type); num.type<- as.numeric(fac.type)
+fac.title <- factor(datos.salarios$job_title); num.title<- as.numeric(fac.title)
+fac.residence <- factor(datos.salarios$employee_residence); num.residence<- as.numeric(fac.residence)
+fac.location <- factor(datos.salarios$company_location); num.location<- as.numeric(fac.location)
+fac.size <- factor(datos.salarios$company_size); num.size<- as.numeric(fac.size)
+```
+
+```{r}
+#Cambiar las nuevas variables en la tabla original
+datos.salarios$experience_level<-num.experience
+datos.salarios$employment_type<-num.type
+datos.salarios$job_title<-num.title
+datos.salarios$employee_residence<-num.residence
+datos.salarios$company_location<-num.location
+datos.salarios$company_size<-num.size
+str(datos.salarios)
+```
+
+### Resumen de estadisticos
+```{r}
+freq(datos.salarios.raw)
+
+summary(datos.salarios)
+stat.desc(datos.salarios)
+
+#Varianzas
+matriz.var <- var(datos.salarios)
+matriz.var
+
+#Correlaciones
+matriz.cor <- cor(datos.salarios)
+matriz.cor
+
+dfSummary(datos.salarios)
+```
+### Gráficos
+```{r}
+corrplot(matriz.cor)
+
+col <- colorRampPalette(c("#BB4444", "#EE9988", "#FFFFFF", "#77AADD", "#4477AA"))
+corrplot(matriz.cor, method="shade", shade.col=NA, tl.col="black", tl.srt=45,
+col=col(200), addCoef.col="black", order="AOE")
+
+ggpairs(datos.salarios)
+
+hist(datos.salarios$salary_in_usd)
+
+hist(datos.salarios$employee_residence)
+
+barplot(table(datos.salarios$salary_in_usd))
+
+boxplot(datos.salarios$job_title)
+
+plot(datos.salarios$salary_in_usd, type = "l")
+
+
+
+
+```
+
+
+# Cuadros resumen
+### Las variables más importantes de nuestra tabla son salary_in_usd, experience_level y employee_residence
+```{r}
+resumen.salary <- descr(datos.salarios$salary_in_usd)
+print(resumen.salary, method="render")
+
+resumen.level <- descr(datos.salarios$experience_level)
+print(resumen.salary, method="render")
+
+resumen.residence <- descr(datos.salarios$employee_residence)
+print(resumen.salary, method="render")
+
+```
+
+# Gráficos importantes
+```{r}
+ggplot(datos.salarios, aes(x = experience_level)) +
+  geom_bar(binwidth = 0.5)
+
+ggplot(datos.salarios.raw, aes(x = salary_in_usd)) + 
+  geom_freqpoly(aes(color = experience_level), binwidth = 10000, linewidth = 0.75)
+
+ggplot(datos.salarios.raw, aes(x = salary_in_usd)) + 
+  geom_freqpoly(aes(color = employee_residence), binwidth = 10000, linewidth = 0.75)
+
+ggplot(datos.salarios.raw, aes(x = salary_in_usd, y= experience_level)) + 
+  geom_count()
+```
+# Programa maqueta
+
+```{r}
+### REGRESION LINEAL ###
+# Se asume linealidad para hacer regresion lineal
+# Probar linealidad con el coeficiente de correlacion
+# Si este es cercano a 1 o -1 hay una relacion lineal fuerte
+
+
+# Coeficiente de Correlacion
+#cor.test() # Parámetros son dos columnas de parámetros
+
+# Revisar valores extremos si hay
+
+# Funcion para crear una regresion lineal
+
+# Esta funcion recibe como parametro Y ~ X 
+# Donde Y es la variable resultado y X el predictor de la variable
+# Se pueden anadir más predcitores con +
+# Un caso particular es:
+modelo <- lm(datos.salarios$salary_in_usd~ datos.salarios$employee_residence)
+modelo
+# Evaluar la regresion, se puede usar el Residual Standard Error (RSE)
+# Se puede encontrar con summary o sigma con el model como parametro
+summary(modelo)
+sigma(modelo)
+
+# Otra forma de evaluar el modelo "R squared" (Coeficiente de determinacion)
+# Un valor de 1 significa que toda la varianza en los datos es explicada por el modelo y este modela bien los datos
+# Lo contrario indica un calor de 0
+summary(modelo)$r.squared
+
+# Calculo del MSE para el modelo
+modelo_sum <- summary(modelo)
+mean(modelo_sum$residuals^2) # MSE
+``` 
+
+
+```{r}
+### PREUEBAS DE HIPOTESIS ###
+
+#Anderson Darling prueba
+p_value <- ad.test(datos.salarios$salary_in_usd)
+
+# Para este tipo de prueba se puede usar la funcion test
+t.test(x = datos.salarios$salary_in_usd, y=NULL,
+       alternative=c("two.sided", "less", "greater"),
+       mu=100, paired=FALSE, var.equal=FALSE,
+       conf.level=0.95)
+
+# x: vector numérico con los datos.
+# alternative: tipo de hipótesis alterna. Los valores disponibles son "two.sided" cuando la hipótesis alterna es  
+#≠, "less" para el caso  < y "greater" para el caso >.
+# mu: valor de referencia de la prueba.
+# conf.level: nivel de confianza para reportar el intervalo de confianza asociado (opcional).
+
+```
