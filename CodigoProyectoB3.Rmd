@@ -1,0 +1,196 @@
+---
+title: "CodigoProyectoB3"
+author: "Jordy Alfaro, Priscilla Angulo, Dylan Benavides, Michelle Gutiérrez"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(ggplot2)
+library(traineR)
+library(caret)
+library(lattice)
+library(readxl)
+library(readr)
+library(kknn)
+library(dplyr)
+library(tidyr)
+library(scatterplot3d)
+library(corrplot)
+library(ggcorrplot)
+library(pastecs)
+library(GGally)
+library(lattice)
+library(summarytools)
+library(car)
+library(nortest)
+```
+
+```{r}
+#Tabla de datos 
+datos.salarios.raw <- read.csv("DataScience_salaries_2024.csv",sep = ",",dec='.')
+
+#Datos que no se tomarán en cuenta
+datos.salarios <-datos.salarios.raw[ , !(names(datos.salarios.raw) %in% c("salary","salary_currency"))]
+str(datos.salarios)
+```
+
+```{r}
+#Convertir variables categoricas en numericas
+fac.experience <- factor(datos.salarios$experience_level); num.experience<- as.numeric(fac.experience)
+fac.type <- factor(datos.salarios$employment_type); num.type<- as.numeric(fac.type)
+fac.title <- factor(datos.salarios$job_title); num.title<- as.numeric(fac.title)
+fac.residence <- factor(datos.salarios$employee_residence); num.residence<- as.numeric(fac.residence)
+fac.location <- factor(datos.salarios$company_location); num.location<- as.numeric(fac.location)
+fac.size <- factor(datos.salarios$company_size); num.size<- as.numeric(fac.size)
+```
+
+```{r}
+#Cambiar las nuevas variables en la tabla original
+datos.salarios$experience_level<-num.experience
+datos.salarios$employment_type<-num.type
+datos.salarios$job_title<-num.title
+datos.salarios$employee_residence<-num.residence
+datos.salarios$company_location<-num.location
+datos.salarios$company_size<-num.size
+str(datos.salarios)
+```
+
+```{r}
+#Análisis descriptivo
+
+freq(datos.salarios.raw)
+
+summary(datos.salarios)
+stat.desc(datos.salarios)
+
+#Varianzas
+matriz.var <- var(datos.salarios)
+matriz.var
+
+#Correlaciones
+matriz.cor <- cor(datos.salarios)
+matriz.cor
+
+dfSummary(datos.salarios)
+
+# Cuadros resumen
+### Las variables más importantes de nuestra tabla son salary_in_usd, experience_level y employee_residence
+
+resumen.salary <- descr(datos.salarios$salary_in_usd)
+print(resumen.salary, method="render")
+
+resumen.level <- descr(datos.salarios$experience_level)
+print(resumen.salary, method="render")
+
+resumen.residence <- descr(datos.salarios$employee_residence)
+print(resumen.salary, method="render")
+
+```
+
+```{r}
+
+### REGRESION LINEAL ###
+#Este modelo predice la variable (dependiente) salary_in_usd, utilizando las demás variables (independientes) de la tabla de datos.
+#Lo que genera son los coeficientes del modelo.
+MODELO <- lm(salary_in_usd~., data=datos.salarios)
+MODELO
+
+# Para evaluar la regresion, se puede usar el Residual Standard Error (RSE)
+# Se puede encontrar con summary o sigma con el model como parametro
+summary(MODELO)
+sigma(MODELO)
+
+# Otra forma de evaluar el modelo es con "R squared" (Coeficiente de determinacion)
+# Un valor de 1 significa que toda la varianza en los datos es explicada por el modelo y este modela bien los datos
+# Lo contrario indica un valor de 0
+summary(MODELO)$r.squared
+
+# Calculo del MSE para el modelo
+MODELO_sum <- summary(MODELO)
+mean(MODELO_sum$residuals^2) 
+
+```
+
+```{r}
+###PRUEBAS DE HIPOTESIS###
+#Para cada coeficiente B del modelo se define la siguiente prueba de hipótesis:
+#H0: B=0 (Coeficiente no significativo)
+#H1: B~=0 (Coeficiente significativo)
+
+#El valor p indica la probabilidad de observar los datos actuales si la hipótesis nula fuera verdadera.
+#Si p es bajo, en este caso menor a 0.05, indica que se puede rechazar la hipótesis nula.
+
+coeficientes <- summary(MODELO)$coefficients
+print(coeficientes)
+#Los resultados del analisis de los coeficientes, nos permiten determinar el nivel de significancia entre las variables predictoras y la variable a predecir, con el fin de rechazar o no la hipótesis nula.
+
+#Utilizando los valores t y p
+for (i in 1:nrow(coeficientes)) {
+    nombre_coef <- rownames(coeficientes)[i]
+    estimacion <- coeficientes[i, "Estimate"]
+    error_estandar <- coeficientes[i, "Std. Error"]
+    valor_t <- coeficientes[i, "t value"]
+    valor_p <- coeficientes[i, "Pr(>|t|)"]
+    
+    cat("Coeficiente:", nombre_coef, "\n")
+    cat("Estimación:", round(estimacion, 4), "\n")
+    cat("Error Estándar:", round(error_estandar, 4), "\n")
+    cat("Valor t:", round(valor_t, 4), "\n")
+    cat("Valor p:", round(valor_p, 4), "\n")
+    
+    if (valor_p < 0.05) {
+        cat("El coeficiente es significativamente diferente de cero al nivel de significancia 0.05.\n")
+    } else {
+        cat("No se puede rechazar la hipótesis nula de que el coeficiente es cero al nivel de significancia 0.05.\n")
+    }
+    cat("\n")
+}
+```
+
+```{r}
+#Utilizando la distribución normal, se define z_critico como el valor crítico, en este caso a partir de un nivel de significancia menor al 5%.
+alpha <- 0.05
+z_critico <- qnorm(1 - alpha / 2)
+
+for (i in 1:nrow(coeficientes)) {
+    nombre_coef <- rownames(coeficientes)[i]
+    estimacion <- coeficientes[i, "Estimate"]
+    error_estandar <- coeficientes[i, "Std. Error"]
+    
+    z_valor <- estimacion / error_estandar
+    
+    cat("Coeficiente:", nombre_coef, "\n")
+    cat("Estimación:", round(estimacion, 4), "\n")
+    cat("Error Estándar:", round(error_estandar, 4), "\n")
+    cat("Valor z:", round(z_valor, 4), "\n")
+    
+    if (abs(z_valor) > z_critico) {
+        cat("El coeficiente es significativamente diferente de cero al nivel de significancia 0.05.\n")
+    } else {
+        cat("No se puede rechazar la hipótesis nula de que el coeficiente es cero al nivel de significancia 0.05.\n")
+    }
+    cat("\n")
+}
+```
+
+```{r}
+#Calificando la prueba de hipótesis#
+
+#Anderson Darling prueba
+p_value <- ad.test(datos.salarios$salary_in_usd)
+
+# Para este tipo de prueba se puede usar la funcion test
+t.test(x = datos.salarios$salary_in_usd, y=NULL,
+       alternative=c("two.sided", "less", "greater"),
+       mu=100, paired=FALSE, var.equal=FALSE,
+       conf.level=0.95)
+
+# x: vector numérico con los datos.
+# alternative: tipo de hipótesis alterna. Los valores disponibles son "two.sided" cuando la hipótesis alterna es  
+#≠, "less" para el caso  < y "greater" para el caso >.
+# mu: valor de referencia de la prueba.
+# conf.level: nivel de confianza para reportar el intervalo de confianza asociado (opcional).
+
+```
